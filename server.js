@@ -53,27 +53,46 @@ async function safeJson(res) {
 
 // ════════════════════════════════════════════
 //  HELPER: Obtener Bearer Token de OroPlay
+//  Prueba múltiples rutas porque varía por versión
 // ════════════════════════════════════════════
 async function getToken() {
   const now = Math.floor(Date.now() / 1000);
   if (tokenCache.token && tokenCache.expiration > now + 60) return tokenCache.token;
 
-  console.log('🔑 Solicitando token a OroPlay…');
-  const res = await fetch(`${OROPLAY.baseUrl}/auth/createtoken`, {
-    method  : 'POST',
-    headers : { 'Content-Type': 'application/json' },
-    body    : JSON.stringify({ clientId: OROPLAY.clientId, clientSecret: OROPLAY.clientSecret }),
+  const AUTH_PATHS = ['/auth/token', '/auth/createtoken', '/token', '/login', '/auth/login'];
+  const body = JSON.stringify({
+    clientId: OROPLAY.clientId, clientSecret: OROPLAY.clientSecret,
+    client_id: OROPLAY.clientId, client_secret: OROPLAY.clientSecret,
+    grant_type: 'client_credentials',
   });
 
-  const data = await safeJson(res); // ← YA NO EXPLOTA CON CUERPO VACÍO
+  let lastError = 'Sin rutas disponibles';
+  for (const path of AUTH_PATHS) {
+    try {
+      console.log(`🔑 Intentando token en: ${OROPLAY.baseUrl}${path}`);
+      const res = await fetch(`${OROPLAY.baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
 
-  // OroPlay puede devolver el token en distintos campos
-  const token = data.token || data.access_token || data.accessToken;
-  if (!token) throw new Error(`Token no encontrado en respuesta: ${JSON.stringify(data)}`);
+      if (res.status === 404) { console.log(`   ↳ 404 — probando siguiente…`); continue; }
 
-  tokenCache = { token, expiration: data.expiration || (now + 3600) };
-  console.log('✅ Token obtenido correctamente');
-  return token;
+      const data  = await safeJson(res);
+      const token = data.token || data.access_token || data.accessToken || (data.data && data.data.token);
+      if (token) {
+        const exp = data.expiration || (data.expires_in ? now + data.expires_in : now + 3600);
+        tokenCache = { token, expiration: exp };
+        console.log(`✅ Token obtenido en: ${path}`);
+        return token;
+      }
+      lastError = `Sin campo token en ${path}: ${JSON.stringify(data).slice(0,100)}`;
+    } catch (e) {
+      lastError = `${path}: ${e.message}`;
+      console.warn(`⚠️  Error en ${path}:`, e.message);
+    }
+  }
+  throw new Error(`No se pudo obtener token OroPlay. Último error: ${lastError}`);
 }
 
 // ════════════════════════════════════════════
