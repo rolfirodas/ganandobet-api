@@ -12,7 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 const OROPLAY = {
-  baseUrl      : process.env.OROPLAY_BASE_URL     || 'https://und7br.sxvwlkohlv.com/api/v2',
+  baseUrl      : process.env.OROPLAY_BASE_URL     || 'https://bs.sxvwlkohlv.com/api/v2',
   clientId     : process.env.OROPLAY_CLIENT_ID    || 'ganandobet',
   clientSecret : process.env.OROPLAY_CLIENT_SECRET || 'rVYlcbUIXcorfHO0oPzQQ6MphC7wNtPl',
 };
