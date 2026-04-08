@@ -15,8 +15,8 @@ app.use(express.json());
 // ── CONFIGURACIÓN OROPLAY ──
 const OROPLAY = {
   baseUrl: 'https://und7br.sxvwlkohlv.com/api/v2',
-  clientId: 'ganandobet',
-  clientSecret: process.env.CLIENT_SECRET || 'rVYlcbUIXcorfHO0oPzQQ6MphC7wNtPl',
+  clientId: process.env.OROPLAY_CLIENT_ID || 'ganandobet',
+  clientSecret: process.env.OROPLAY_CLIENT_SECRET || 'rVYlcbUIXcorfHO0oPzQQ6MphC7wNtPl',
 };
 
 // ── BASE64 para Seamless Auth ──
@@ -59,7 +59,7 @@ async function oroplayCall(method, path, body = null) {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${token}` // <--- ESTA LÍNEA ES LA CLAVE
     }
   };
   if (body) options.body = JSON.stringify(body);
