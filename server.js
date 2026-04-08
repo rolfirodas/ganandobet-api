@@ -326,6 +326,13 @@ app.post('/api/transaction', (req, res) => {
 //  START
 // ════════════════════════════════════════════
 const PORT = process.env.PORT || 3000;
+app.get('/mi-ip', (req, res) => {
+  require('https').get('https://ifconfig.me', r => {
+    let ip = '';
+    r.on('data', d => ip += d);
+    r.on('end', () => res.json({ ip: ip.trim() }));
+  }).on('error', e => res.json({ error: e.message }));
+});
 app.listen(PORT, () => {
   console.log(`✅ Ganando.bet API corriendo en puerto ${PORT}`);
   console.log(`🎰 OroPlay endpoint: ${OROPLAY.baseUrl}`);
