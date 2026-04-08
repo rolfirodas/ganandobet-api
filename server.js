@@ -13,7 +13,8 @@ app.use(express.json());
 
 // ── CONFIGURACIÓN OROPLAY ──
 const OROPLAY = {
-  baseUrl      : process.env.OROPLAY_BASE_URL    || 'https://und7br.sxvwlkohlv.com/api/v2',
+  // Si sigue fallando, cambiá OROPLAY_BASE_URL en Railway Variables
+  baseUrl      : process.env.OROPLAY_BASE_URL    || 'https://und7br.sxvwlkohlv.com',
   clientId     : process.env.OROPLAY_CLIENT_ID   || 'ganandobet',
   clientSecret : process.env.OROPLAY_CLIENT_SECRET || 'rVYlcbUIXcorfHO0oPzQQ6MphC7wNtPl',
 };
@@ -59,7 +60,22 @@ async function getToken() {
   const now = Math.floor(Date.now() / 1000);
   if (tokenCache.token && tokenCache.expiration > now + 60) return tokenCache.token;
 
-  const AUTH_PATHS = ['/auth/token', '/auth/createtoken', '/token', '/login', '/auth/login'];
+  // Combinaciones base + ruta a probar (el 404 en todas indica base incorrecta)
+  const HOST = 'https://und7br.sxvwlkohlv.com';
+  const COMBOS = [
+    `${HOST}/api/v2/auth/token`,
+    `${HOST}/api/v2/auth/createtoken`,
+    `${HOST}/api/v1/auth/token`,
+    `${HOST}/api/v1/auth/createtoken`,
+    `${HOST}/api/auth/token`,
+    `${HOST}/api/auth/createtoken`,
+    `${HOST}/api/token`,
+    `${HOST}/auth/token`,
+    `${HOST}/auth/createtoken`,
+    `${HOST}/v2/auth/token`,
+    `${HOST}/v1/auth/token`,
+  ];
+
   const body = JSON.stringify({
     clientId: OROPLAY.clientId, clientSecret: OROPLAY.clientSecret,
     client_id: OROPLAY.clientId, client_secret: OROPLAY.clientSecret,
@@ -67,32 +83,46 @@ async function getToken() {
   });
 
   let lastError = 'Sin rutas disponibles';
-  for (const path of AUTH_PATHS) {
+  for (const url of COMBOS) {
     try {
-      console.log(`🔑 Intentando token en: ${OROPLAY.baseUrl}${path}`);
-      const res = await fetch(`${OROPLAY.baseUrl}${path}`, {
-        method: 'POST',
+      console.log(`🔑 Probando: ${url}`);
+      const res = await fetch(url, {
+        method : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
       });
 
-      if (res.status === 404) { console.log(`   ↳ 404 — probando siguiente…`); continue; }
+      if (res.status === 404) { console.log(`   ↳ 404`); continue; }
+      if (res.status === 405) { console.log(`   ↳ 405 Method Not Allowed`); continue; }
 
-      const data  = await safeJson(res);
-      const token = data.token || data.access_token || data.accessToken || (data.data && data.data.token);
+      const raw = await res.text();
+      if (!raw || raw.trim() === '') { console.log(`   ↳ cuerpo vacío (${res.status})`); continue; }
+
+      let data;
+      try { data = JSON.parse(raw); } catch { console.log(`   ↳ no-JSON: ${raw.slice(0,60)}`); continue; }
+
+      const token = data.token || data.access_token || data.accessToken
+                 || data.Bearer || data.bearer
+                 || (data.data && (data.data.token || data.data.access_token));
+
       if (token) {
-        const exp = data.expiration || (data.expires_in ? now + data.expires_in : now + 3600);
+        const exp = data.expiration || (data.expires_in ? now + parseInt(data.expires_in) : now + 3600);
         tokenCache = { token, expiration: exp };
-        console.log(`✅ Token obtenido en: ${path}`);
+        // Actualizar baseUrl para que el resto de llamadas usen la ruta correcta
+        OROPLAY.baseUrl = url.replace(/\/(auth|token)[^/]*$/, '');
+        console.log(`✅ Token OK en: ${url}`);
+        console.log(`✅ BaseUrl actualizado a: ${OROPLAY.baseUrl}`);
         return token;
       }
-      lastError = `Sin campo token en ${path}: ${JSON.stringify(data).slice(0,100)}`;
+      lastError = `Sin campo token en ${url}: ${JSON.stringify(data).slice(0,150)}`;
+      console.log(`   ↳ respuesta sin token: ${lastError}`);
+
     } catch (e) {
-      lastError = `${path}: ${e.message}`;
-      console.warn(`⚠️  Error en ${path}:`, e.message);
+      lastError = e.message;
+      console.warn(`⚠️  Error en ${url}:`, e.message);
     }
   }
-  throw new Error(`No se pudo obtener token OroPlay. Último error: ${lastError}`);
+  throw new Error(`Token OroPlay no encontrado. Revisá credenciales o contactá soporte OroPlay. Último: ${lastError}`);
 }
 
 // ════════════════════════════════════════════
@@ -132,14 +162,31 @@ app.get('/mi-ip', (req, res) => {
   }).on('error', e => res.json({ error: e.message }));
 });
 
-// ─── Test de token (para verificar auth) ───
+// ─── Test de token ───
 app.get('/test-token', async (req, res) => {
   try {
     const token = await getToken();
-    res.json({ success: true, token: token.slice(0, 20) + '…', expiration: tokenCache.expiration });
+    res.json({ success: true, token: token.slice(0, 20) + '…', baseUrl: OROPLAY.baseUrl, expiration: tokenCache.expiration });
   } catch (e) {
     res.json({ success: false, error: e.message });
   }
+});
+
+// ─── Debug: descubrir rutas disponibles en OroPlay ───
+app.get('/debug-api', async (req, res) => {
+  const HOST  = 'https://und7br.sxvwlkohlv.com';
+  const PATHS = ['/', '/api', '/api/v1', '/api/v2', '/api/v3', '/docs', '/swagger'];
+  const results = [];
+  for (const p of PATHS) {
+    try {
+      const r = await fetch(HOST + p, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      const raw = await r.text();
+      results.push({ path: p, status: r.status, preview: raw.slice(0, 200) });
+    } catch (e) {
+      results.push({ path: p, error: e.message });
+    }
+  }
+  res.json({ host: HOST, results });
 });
 
 // ════════════════════════════════════════════
