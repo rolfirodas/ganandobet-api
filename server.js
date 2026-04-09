@@ -6,6 +6,12 @@
 const express = require('express');
 const cors    = require('cors');
 const fetch   = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+const { HttpsProxyAgent } = require('https-proxy-agent');
+
+// FIXIE PROXY — IP estática para OroPlay
+const FIXIE_URL = process.env.FIXIE_URL || '';
+const proxyAgent = FIXIE_URL ? new HttpsProxyAgent(FIXIE_URL) : null;
+if (proxyAgent) console.log('🔒 Proxy Fixie activo — IP estática habilitada');
 
 const app = express();
 app.use(cors());
@@ -33,11 +39,13 @@ async function getToken() {
   const now = Math.floor(Date.now() / 1000);
   if (tokenCache.token && tokenCache.expiration > now + 60) return tokenCache.token;
   console.log(`🔑 Obteniendo token → ${OROPLAY.baseUrl}/auth/createtoken`);
-  const res = await fetch(`${OROPLAY.baseUrl}/auth/createtoken`, {
+  const tokenOpts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clientId: OROPLAY.clientId, clientSecret: OROPLAY.clientSecret }),
-  });
+  };
+  if (proxyAgent) tokenOpts.agent = proxyAgent;
+  const res = await fetch(`${OROPLAY.baseUrl}/auth/createtoken`, tokenOpts);
   const data = await safeJson(res);
   if (!data.token) throw new Error(`Token no encontrado. Respuesta: ${JSON.stringify(data)}`);
   tokenCache = { token: data.token, expiration: data.expiration || (now + 3600) };
@@ -52,6 +60,7 @@ async function oroplayCall(method, path, body = null) {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
   };
   if (body) options.body = JSON.stringify(body);
+  if (proxyAgent) options.agent = proxyAgent;
   const res = await fetch(`${OROPLAY.baseUrl}${path}`, options);
   return safeJson(res);
 }
