@@ -12,7 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 const OROPLAY = {
-  baseUrl      : process.env.OROPLAY_BASE_URL     || 'https://bs.sxvwlkohlv.com/api/v2',
+  baseUrl      : process.env.OROPLAY_BASE_URL     || 'https://und7br.sxvwlkohlv.com/api/v2',
   clientId     : process.env.OROPLAY_CLIENT_ID    || 'ganandobet',
   clientSecret : process.env.OROPLAY_CLIENT_SECRET || 'rVYlcbUIXcorfHO0oPzQQ6MphC7wNtPl',
 };
@@ -264,4 +264,13 @@ app.listen(PORT, () => {
   console.log(`🎰 OroPlay baseUrl: ${OROPLAY.baseUrl}`);
   console.log(`📡 Seamless: /api/balance | /api/transaction | /api/batch-transactions`);
   console.log(`⚠️  Callback URL en OroPlay: https://ganandobet-api-production.up.railway.app`);
+
+// AUTO-PING — evita que Render duerma el servidor (cada 14 min)
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || process.env.RAILWAY_STATIC_URL || '';
+if (SELF_URL) {
+  setInterval(() => {
+    require('https').get(SELF_URL + '/').on('error', () => {});
+    console.log('🏓 Ping propio para mantenerse activo');
+  }, 14 * 60 * 1000);
+}
 });
